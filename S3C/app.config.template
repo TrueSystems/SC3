@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <!-- Create a local copy of this file named App.congig and add this file     -->
+  <!-- with your data to the project                                           -->
+  <!-- IMPORTAT : Never replicate this file to a code repository as it will    -->
+  <!--            your AWS credentials and unauthorized use can cost you money -->
+  <appSettings>
+    <!-- please use your aws credentials on AWSAccessKey and AWSSecretKey      -->
+    <!-- make sure that this credentials have at leas list as read rights      -->    
+    <!-- to the desired S3 bucket                                              -->
+    <add key="AWSAccessKey" value="USE YOUR OWN" />
+    <add key="AWSSecretKey" value="USE YOUR OWN" />
+    <add key="AWSRegionEndpoint" value="sa-east-1" />
+  </appSettings>
+</configuration>
