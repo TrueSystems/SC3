@@ -39,10 +39,14 @@ Imports System.Linq
 Imports System.Net
 Imports System.Threading
 Imports System.Collections
-
 Imports Amazon
 Imports Amazon.S3
 Imports Amazon.S3.Model
+
+Enum CommandType
+    CopyFromS3C = 1
+    CopyToS3C = 2
+End Enum
 
 
 Module S3C
@@ -51,25 +55,23 @@ Module S3C
     Private appConfig As NameValueCollection
     Private commands As Hashtable
 
-
-
     Sub Main()
 
         ParseCommandLine()
         CreateEventLog()
         LogInfo("S3C copy started at " & Now.ToString, EventLogEntryType.Information)
-        CopyFromS3Bucket(commands("BUCKET"), commands("BUCKETPATH"), commands("LOCALPATH"))
+        If commands("COMMAND") = "1" Then
+            CopyToS3Bucket(commands("BUCKET"), commands("BUCKETPATH"), commands("LOCALPATH"))
+        Else
+            CopyFromS3Bucket(commands("BUCKET"), commands("BUCKETPATH"), commands("LOCALPATH"))
+        End If
         LogInfo("S3C copy finished", EventLogEntryType.Information)
         S3DoppelEventLog.Dispose()
         Environment.Exit(0)
 
-
     End Sub
 
-
-
     Public Sub CreateEventLog()
-
 
         S3DoppelEventLog = New EventLog
 
@@ -91,12 +93,13 @@ Module S3C
         If Environment.CommandLine.ToUpper.IndexOf("-HELP") > 0 Then
             Console.WriteLine("S3C - (c)True Systems")
             Console.WriteLine()
-            Console.WriteLine("Utility to copy entire folder contentS from S3 to local path")
+            Console.WriteLine("Utility to copy entire folder contents from/to S3 ")
             Console.WriteLine("(copy only newer files from S3 if file already exist locally")
             Console.WriteLine()
             Console.WriteLine("Usage:")
+            Console.WriteLine("        --COMMAND=1-COPY TO, 2-COPY FROM           [REQUIRED]")
             Console.WriteLine("        --BUCKET=S3_bucket_name                    [REQUIRED]")
-            Console.WriteLine("        --BUCKETPATH=S3_bucket_folder path,if not  [OPTIONAL]")
+            Console.WriteLine("        --BUCKETPATH=S3_bucket_folder path, if not [OPTIONAL]")
             Console.WriteLine("          informed S3C will copy all bucket")
             Console.WriteLine("          content recursively")
             Console.WriteLine("        --LOCALPATH=local_machine_path             [REQUIRED]")
@@ -114,11 +117,9 @@ Module S3C
             Environment.Exit(0)
         End If
 
-
         commands = New Hashtable
         Dim sep() As String = {"--"}
         Dim parameters() As String = Environment.CommandLine.Split(sep, StringSplitOptions.None)
-
         Dim parameter() As String
 
         For k As Integer = 0 To parameters.Length - 1
@@ -128,6 +129,7 @@ Module S3C
             End If
         Next
 
+        If CheckCommand("COMMAND") = False Then Environment.Exit(1)
         If CheckCommand("BUCKET") = False Then Environment.Exit(1)
         If CheckCommand("BUCKETPATH") = False Then
             commands.Add("BUCKETPATH", "")
@@ -135,6 +137,7 @@ Module S3C
         If CheckCommand("LOCALPATH") = False Then Environment.Exit(1)
 
     End Sub
+
     Private Function CheckCommand(ByVal C As String) As Boolean
 
         Try
@@ -151,7 +154,6 @@ Module S3C
         Return True
 
     End Function
-
 
     Private Sub CopyFromS3Bucket(ByVal Bucket As String, ByVal KeyPrefix As String, ByVal LocalFolder As String)
 
@@ -263,6 +265,56 @@ Module S3C
 
     End Sub
 
+    Private Sub CopyToS3Bucket(ByVal Bucket As String, ByVal KeyPrefix As String, ByVal LocalFile As String)
+
+        Dim s3Client As AmazonS3
+        Dim timestart As Date = Now
+        Dim objRequest As PutObjectRequest
+        Dim responseRequest As PutObjectResponse
+        Dim fileStream As FileStream
+
+        'Create Amazon AWS S3 Client pointing to configured region
+        Try
+            s3Client = AWSClientFactory.CreateAmazonS3Client(RegionEndpoint.GetBySystemName(appConfig("AWSRegionEndpoint")))
+            LogInfo("Connected to S3 region endpoint " & appConfig("AWSRegionEndpoint"), EventLogEntryType.Information)
+        Catch ex As AmazonS3Exception
+            If (ex.ErrorCode <> Nothing And (ex.ErrorCode.Equals("InvalidAccessKeyId") Or ex.ErrorCode.Equals("InvalidSecurity"))) Then
+                LogInfo("Error connecting to AWS S3 check provided AWS credentials", EventLogEntryType.Error)
+            End If
+            LogInfo("Error connecting to AWS S3 : " & ex.Message, EventLogEntryType.Error)
+            Environment.Exit(1)
+        End Try
+
+        'Create a PutObject request
+        objRequest = New PutObjectRequest
+        objRequest.BucketName = Bucket
+        objRequest.Key = KeyPrefix
+
+        'Open file
+        Try
+
+            fileStream = New FileStream(LocalFile, FileMode.Open)
+
+            'Set filestream
+            objRequest.InputStream = fileStream
+
+        Catch ex As Exception
+            LogInfo("Local file not found.", EventLogEntryType.Error)
+            Environment.Exit(1)
+        End Try
+
+        Try
+
+            'Put object to s3 bucket
+            responseRequest = s3Client.PutObject(objRequest)
+
+        Catch ex As Exception
+            LogInfo("Operation error: " & responseRequest.ToString, EventLogEntryType.Error)
+            Environment.Exit(1)
+        End Try
+
+    End Sub
+
     Private Sub DebugInfo(ByVal s As String)
 
         Try
@@ -272,8 +324,6 @@ Module S3C
         Catch ex As Exception
             'COMMANDLINE DEBUG OPTION NOT SPECIFIED
         End Try
-
-
 
     End Sub
 
@@ -300,6 +350,5 @@ Module S3C
         End Try
 
     End Sub
-
 
 End Module
